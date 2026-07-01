@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: "/Poptech-news-1.0/",
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
