@@ -57,10 +57,22 @@ export interface UserProfile {
   avatar?: string;
   role: 'admin' | 'editor' | 'subscriber';
   createdAt: string;
+  googleConnected?: boolean;
+  googleEmail?: string;
+}
+
+export interface PortalFeedback {
+  id: string;
+  name: string;
+  email: string;
+  type: 'sugestao' | 'elogio' | 'critica' | 'bug' | 'outro';
+  message: string;
+  createdAt: string;
+  status: 'pendente' | 'lido' | 'arquivado';
 }
 
 export interface ViewState {
-  currentView: 'home' | 'category' | 'article' | 'admin' | 'privacy' | 'terms';
+  currentView: 'home' | 'category' | 'article' | 'admin' | 'privacy' | 'terms' | 'feedback';
   activeCategory?: CategoryId;
   activeArticleId?: string;
 }

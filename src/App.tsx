@@ -13,6 +13,8 @@ import AdSpace from './components/AdSpace';
 import CategoryView from './components/CategoryView';
 import ArticleView from './components/ArticleView';
 import AdminDashboard from './components/AdminDashboard';
+import CookieConsent from './components/CookieConsent';
+import FeedbackView from './components/FeedbackView';
 import { db } from './lib/db';
 import { Article, CategoryId, ViewState } from './types';
 import { Sparkles, Cpu, Film, Flame, ShieldAlert, CheckCircle, Tag, X, HelpCircle, FileText } from 'lucide-react';
@@ -40,7 +42,7 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  const handleNavigate = (view: 'home' | 'category' | 'admin' | 'article' | 'privacy' | 'terms', id?: string) => {
+  const handleNavigate = (view: 'home' | 'category' | 'admin' | 'article' | 'privacy' | 'terms' | 'feedback', id?: string) => {
     if (view === 'category' && id) {
       setViewState({ currentView: 'category', activeCategory: id as CategoryId });
     } else if (view === 'article' && id) {
@@ -344,11 +346,22 @@ export default function App() {
           </div>
         )}
 
+        {/* VIEW: FEEDBACK & SUGGESTIONS */}
+        {viewState.currentView === 'feedback' && (
+          <FeedbackView onBackToHome={() => handleNavigate('home')} />
+        )}
+
       </main>
 
       {/* Main Footer */}
       <Footer 
         onNavigate={handleNavigate} 
+      />
+
+      {/* Cookie Consent Banner */}
+      <CookieConsent 
+        onNavigate={handleNavigate} 
+        isDarkMode={isDarkMode} 
       />
 
     </div>

@@ -8,7 +8,7 @@ import { Mail, Shield, MessageSquare, Twitter, Youtube, Twitch, ArrowUp, FileTex
 import AdSpace from './AdSpace';
 
 interface FooterProps {
-  onNavigate: (view: 'home' | 'category' | 'admin' | 'article' | 'privacy' | 'terms', activeId?: string) => void;
+  onNavigate: (view: 'home' | 'category' | 'admin' | 'article' | 'privacy' | 'terms' | 'feedback', activeId?: string) => void;
 }
 
 export default function Footer({ onNavigate }: FooterProps) {
@@ -81,6 +81,10 @@ export default function Footer({ onNavigate }: FooterProps) {
             <button onClick={() => onNavigate('terms')} className="flex items-center gap-1.5 text-left hover:text-brand-purple transition-colors cursor-pointer font-light" id="footer-terms-btn">
               <FileText className="h-3.5 w-3.5 text-brand-blue" />
               <span>Termos de Uso</span>
+            </button>
+            <button onClick={() => onNavigate('feedback')} className="flex items-center gap-1.5 text-left hover:text-brand-purple transition-colors cursor-pointer font-light text-brand-purple font-semibold" id="footer-feedback-btn">
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Feedbacks & Sugestões</span>
             </button>
             <span className="flex items-center gap-1.5 text-purple-300/80 font-light">
               <Mail className="h-3.5 w-3.5 text-brand-blue" />

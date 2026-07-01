@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Article, Category, PortalComment, UserProfile, Tag, PortalStats, CategoryId } from '../types';
+import { Article, Category, PortalComment, UserProfile, Tag, PortalStats, CategoryId, PortalFeedback } from '../types';
 import { initialArticles, categories, initialTags, initialComments } from '../data/mockArticles';
 
 // Default mock profiles
@@ -124,8 +124,121 @@ class LocalDatabase {
     return user;
   }
 
+  signInOrUpWithGoogle(email: string, name: string, avatar: string): UserProfile {
+    const users = this.getUsers();
+    const normalizedEmail = email.toLowerCase();
+    let user = users.find(u => u.email.toLowerCase() === normalizedEmail);
+
+    if (user) {
+      // Link Google if not already connected
+      user.googleConnected = true;
+      user.googleEmail = normalizedEmail;
+      if (!user.avatar) {
+        user.avatar = avatar;
+      }
+    } else {
+      // Auto-register new Google user
+      const isSystemAdmin = normalizedEmail === 'alissonrodrigues31122006@gmail.com' || normalizedEmail.includes('admin@poptechnews.com');
+      user = {
+        id: isSystemAdmin ? 'usr_admin_auto' : 'usr_' + Math.random().toString(36).substr(2, 9),
+        email: normalizedEmail,
+        name,
+        role: isSystemAdmin ? 'admin' : 'subscriber',
+        avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(name)}`,
+        createdAt: new Date().toISOString(),
+        googleConnected: true,
+        googleEmail: normalizedEmail
+      };
+      users.push(user);
+    }
+
+    localStorage.setItem('poptech_users', JSON.stringify(users));
+    this.setCurrentUser(user);
+    return user;
+  }
+
+  linkGoogleAccount(userId: string, googleEmail: string): UserProfile {
+    const users = this.getUsers();
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+      throw new Error('Usuário não encontrado.');
+    }
+
+    // Check if googleEmail is already connected to another user
+    const otherUser = users.find(u => u.id !== userId && u.googleEmail?.toLowerCase() === googleEmail.toLowerCase());
+    if (otherUser) {
+      throw new Error('Esta conta do Google já está vinculada a outro usuário do portal.');
+    }
+
+    users[userIndex].googleConnected = true;
+    users[userIndex].googleEmail = googleEmail.toLowerCase();
+    
+    localStorage.setItem('poptech_users', JSON.stringify(users));
+    
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === userId) {
+      this.setCurrentUser(users[userIndex]);
+    }
+    return users[userIndex];
+  }
+
+  unlinkGoogleAccount(userId: string): UserProfile {
+    const users = this.getUsers();
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+      throw new Error('Usuário não encontrado.');
+    }
+
+    users[userIndex].googleConnected = false;
+    delete users[userIndex].googleEmail;
+
+    localStorage.setItem('poptech_users', JSON.stringify(users));
+    
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === userId) {
+      this.setCurrentUser(users[userIndex]);
+    }
+    return users[userIndex];
+  }
+
+  updateUserAvatar(userId: string, avatarDataUrl: string): UserProfile {
+    const users = this.getUsers();
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+      throw new Error('Usuário não encontrado.');
+    }
+
+    users[userIndex].avatar = avatarDataUrl;
+
+    localStorage.setItem('poptech_users', JSON.stringify(users));
+    
+    const currentUser = this.getCurrentUser();
+    if (currentUser && currentUser.id === userId) {
+      this.setCurrentUser(users[userIndex]);
+    }
+    return users[userIndex];
+  }
+
   signOut() {
     localStorage.removeItem('poptech_current_user');
+    
+    // Revogar sessão e limpar tokens de autenticação do Supabase
+    localStorage.removeItem('supabase.auth.token');
+    
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.includes('supabase'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => {
+        localStorage.removeItem(key);
+      });
+    } catch (e) {
+      console.warn('Erro ao revogar sessão e limpar tokens do Supabase:', e);
+    }
   }
 
   getCurrentUser(): UserProfile | null {
@@ -137,21 +250,54 @@ class LocalDatabase {
     localStorage.setItem('poptech_current_user', JSON.stringify(user));
   }
 
+  private checkRole(allowedRoles: ('admin' | 'editor')[]) {
+    const user = this.getCurrentUser();
+    if (!user) {
+      throw new Error('Acesso negado: Usuário não autenticado no portal.');
+    }
+    if (!allowedRoles.includes(user.role as any)) {
+      throw new Error(`Acesso negado: Seu nível de acesso (${user.role}) não tem permissão para realizar esta operação.`);
+    }
+  }
+
   getUsers(): UserProfile[] {
     const usersStr = localStorage.getItem('poptech_users');
     return usersStr ? JSON.parse(usersStr) : defaultProfiles;
   }
 
   deleteUser(id: string) {
+    this.checkRole(['admin']);
+    const currentUser = this.getCurrentUser();
+    
+    // Prevent self deletion
+    if (currentUser && currentUser.id === id) {
+      throw new Error('Segurança: Você não pode auto-excluir sua própria conta administrativa.');
+    }
+
     const users = this.getUsers();
-    const filtered = users.filter(u => u.id !== id);
-    localStorage.setItem('poptech_users', JSON.stringify(filtered));
+    const userToDelete = users.find(u => u.id === id);
+    if (userToDelete) {
+      // Protection for primary admin
+      if (userToDelete.email === 'alissonrodrigues31122006@gmail.com') {
+        throw new Error('Crítico: A conta do Administrador Primário (Alisson Rodrigues) é protegida pelo sistema e não pode ser deletada.');
+      }
+      
+      const filtered = users.filter(u => u.id !== id);
+      localStorage.setItem('poptech_users', JSON.stringify(filtered));
+    }
   }
 
   updateUserRole(id: string, role: 'admin' | 'editor' | 'subscriber') {
+    this.checkRole(['admin']);
+    
     const users = this.getUsers();
     const index = users.findIndex(u => u.id === id);
     if (index !== -1) {
+      // Protection for primary admin
+      if (users[index].email === 'alissonrodrigues31122006@gmail.com') {
+        throw new Error('Crítico: O nível de acesso do Administrador Primário (Alisson Rodrigues) é protegido e não pode ser rebaixado.');
+      }
+      
       users[index].role = role;
       localStorage.setItem('poptech_users', JSON.stringify(users));
     }
@@ -177,6 +323,7 @@ class LocalDatabase {
   }
 
   createArticle(articleData: Omit<Article, 'id' | 'views' | 'createdAt'>): Article {
+    this.checkRole(['admin', 'editor']);
     const articles = this.getArticles(true);
     
     // Create SEO friendly URL-friendly slug as ID
@@ -202,6 +349,7 @@ class LocalDatabase {
   }
 
   updateArticle(id: string, updatedFields: Partial<Article>): Article {
+    this.checkRole(['admin', 'editor']);
     const articles = this.getArticles(true);
     const index = articles.findIndex(a => a.id === id);
     if (index === -1) {
@@ -219,6 +367,7 @@ class LocalDatabase {
   }
 
   deleteArticle(id: string) {
+    this.checkRole(['admin', 'editor']);
     const articles = this.getArticles(true);
     const filtered = articles.filter(a => a.id !== id);
     localStorage.setItem('poptech_articles', JSON.stringify(filtered));
@@ -244,6 +393,7 @@ class LocalDatabase {
   }
 
   createCategory(category: Category): Category {
+    this.checkRole(['admin', 'editor']);
     const cats = this.getCategories();
     if (cats.some(c => c.id === category.id)) {
       throw new Error('ID de categoria já existe.');
@@ -254,6 +404,7 @@ class LocalDatabase {
   }
 
   updateCategory(id: CategoryId, name: string, description: string, color: string): Category {
+    this.checkRole(['admin', 'editor']);
     const cats = this.getCategories();
     const index = cats.findIndex(c => c.id === id);
     if (index === -1) {
@@ -265,6 +416,7 @@ class LocalDatabase {
   }
 
   deleteCategory(id: CategoryId) {
+    this.checkRole(['admin', 'editor']);
     const cats = this.getCategories();
     const filtered = cats.filter(c => c.id !== id);
     localStorage.setItem('poptech_categories', JSON.stringify(filtered));
@@ -355,6 +507,57 @@ class LocalDatabase {
     subs.push(cleaned);
     localStorage.setItem('poptech_subscribers', JSON.stringify(subs));
     return true;
+  }
+
+  // --- FEEDBACKS ---
+  private _getFeedbacks(): PortalFeedback[] {
+    const feedStr = localStorage.getItem('poptech_feedbacks');
+    const feedbacks: PortalFeedback[] = feedStr ? JSON.parse(feedStr) : [];
+    return feedbacks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  getFeedbacks(): PortalFeedback[] {
+    this.checkRole(['admin', 'editor']);
+    return this._getFeedbacks();
+  }
+
+  createFeedback(
+    name: string,
+    email: string,
+    type: 'sugestao' | 'elogio' | 'critica' | 'bug' | 'outro',
+    message: string
+  ): PortalFeedback {
+    const feedbacks = this._getFeedbacks();
+    const newFeedback: PortalFeedback = {
+      id: 'feed_' + Math.random().toString(36).substr(2, 9),
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      type,
+      message: message.trim(),
+      createdAt: new Date().toISOString(),
+      status: 'pendente'
+    };
+
+    feedbacks.push(newFeedback);
+    localStorage.setItem('poptech_feedbacks', JSON.stringify(feedbacks));
+    return newFeedback;
+  }
+
+  deleteFeedback(id: string) {
+    this.checkRole(['admin']);
+    const feedbacks = this._getFeedbacks();
+    const filtered = feedbacks.filter(f => f.id !== id);
+    localStorage.setItem('poptech_feedbacks', JSON.stringify(filtered));
+  }
+
+  updateFeedbackStatus(id: string, status: 'pendente' | 'lido' | 'arquivado') {
+    this.checkRole(['admin', 'editor']);
+    const feedbacks = this._getFeedbacks();
+    const index = feedbacks.findIndex(f => f.id === id);
+    if (index !== -1) {
+      feedbacks[index].status = status;
+      localStorage.setItem('poptech_feedbacks', JSON.stringify(feedbacks));
+    }
   }
 
   // --- STATS ENGINE ---

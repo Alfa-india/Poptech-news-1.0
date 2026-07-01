@@ -5,11 +5,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/db';
-import { Article, Category, CategoryId, UserProfile, PortalComment } from '../types';
+import { Article, Category, CategoryId, UserProfile, PortalComment, PortalFeedback } from '../types';
 import { 
   BarChart, FileText, Users, MessageSquare, Plus, Edit, Trash, Eye, 
   CheckCircle, AlertCircle, Save, FolderPlus, Tag, Database, HelpCircle, 
-  ChevronRight, ArrowLeft, Settings, Mail, RefreshCw, X
+  ChevronRight, ArrowLeft, Settings, Mail, RefreshCw, X, Shield, LogOut
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -17,7 +17,7 @@ interface AdminDashboardProps {
   onArticleClick: (articleId: string) => void;
 }
 
-type TabType = 'stats' | 'articles' | 'categories' | 'users' | 'supabase';
+type TabType = 'stats' | 'articles' | 'categories' | 'users' | 'supabase' | 'feedbacks';
 
 export default function AdminDashboard({ onNavigateHome, onArticleClick }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<TabType>('stats');
@@ -53,6 +53,9 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
   // Users state
   const [users, setUsers] = useState<UserProfile[]>([]);
 
+  // Feedbacks state
+  const [feedbacks, setFeedbacks] = useState<PortalFeedback[]>([]);
+
   // Supabase connection credentials state
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
@@ -68,11 +71,34 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
     setArticles(db.getArticles(true));
     setCategories(db.getCategories());
     setUsers(db.getUsers());
+    setFeedbacks(db.getFeedbacks());
   };
 
   const triggerAlert = (type: 'success' | 'error', message: string) => {
     setAlert({ type, message });
     setTimeout(() => setAlert(null), 4000);
+  };
+
+  const handleUpdateFeedbackStatus = (id: string, status: 'pendente' | 'lido' | 'arquivado') => {
+    try {
+      db.updateFeedbackStatus(id, status);
+      triggerAlert('success', `Status do feedback alterado para "${status}".`);
+      refreshData();
+    } catch (err: any) {
+      triggerAlert('error', err.message || 'Erro ao atualizar status do feedback.');
+    }
+  };
+
+  const handleDeleteFeedback = (id: string) => {
+    if (window.confirm('Tem certeza de que deseja excluir permanentemente este feedback?')) {
+      try {
+        db.deleteFeedback(id);
+        triggerAlert('success', 'Feedback excluído com sucesso.');
+        refreshData();
+      } catch (err: any) {
+        triggerAlert('error', err.message || 'Erro ao excluir feedback.');
+      }
+    }
   };
 
   // Guard access
@@ -205,25 +231,37 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
 
   const handleDeleteCategory = (id: CategoryId) => {
     if (confirm('Deseja deletar esta categoria?')) {
-      db.deleteCategory(id);
-      triggerAlert('success', 'Categoria deletada.');
-      refreshData();
+      try {
+        db.deleteCategory(id);
+        triggerAlert('success', 'Categoria deletada.');
+        refreshData();
+      } catch (err: any) {
+        triggerAlert('error', err.message || 'Erro ao deletar categoria.');
+      }
     }
   };
 
   // User list actions
   const handleChangeRole = (userId: string, currentRole: string) => {
-    const nextRole = currentRole === 'subscriber' ? 'editor' : currentRole === 'editor' ? 'admin' : 'subscriber';
-    db.updateUserRole(userId, nextRole);
-    triggerAlert('success', 'Nível de privilégio do usuário atualizado!');
-    refreshData();
+    try {
+      const nextRole = currentRole === 'subscriber' ? 'editor' : currentRole === 'editor' ? 'admin' : 'subscriber';
+      db.updateUserRole(userId, nextRole);
+      triggerAlert('success', 'Nível de privilégio do usuário atualizado!');
+      refreshData();
+    } catch (err: any) {
+      triggerAlert('error', err.message || 'Erro ao alterar nível de privilégio.');
+    }
   };
 
   const handleDeleteUser = (userId: string) => {
     if (confirm('Deseja realmente banir/remover este usuário?')) {
-      db.deleteUser(userId);
-      triggerAlert('success', 'Usuário removido.');
-      refreshData();
+      try {
+        db.deleteUser(userId);
+        triggerAlert('success', 'Usuário removido.');
+        refreshData();
+      } catch (err: any) {
+        triggerAlert('error', err.message || 'Erro ao remover usuário.');
+      }
     }
   };
 
@@ -236,6 +274,16 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
     }
     setIsSupabaseConnected(true);
     triggerAlert('success', 'Conexão com banco Supabase estabelecida com sucesso! Esquemas sincronizados.');
+  };
+
+  const handleLogout = () => {
+    if (confirm('Deseja realmente encerrar sua sessão e revogar todos os tokens de autenticação do Supabase com segurança?')) {
+      db.signOut();
+      triggerAlert('success', 'Sessão revogada com sucesso! Redirecionando...');
+      setTimeout(() => {
+        onNavigateHome();
+      }, 1200);
+    }
   };
 
   // Compute portal analytics stats
@@ -256,13 +304,27 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
           </p>
         </div>
 
-        <button 
-          onClick={onNavigateHome}
-          className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider bg-purple-900/20 hover:bg-purple-900/40 border border-purple-800/40 text-purple-300 py-2 px-4 rounded-lg transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span>Voltar ao Portal</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button 
+            onClick={onNavigateHome}
+            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider bg-purple-950/20 hover:bg-purple-900/20 border border-purple-500/30 hover:border-purple-500/50 text-purple-300 py-2.5 px-4 rounded-lg transition-colors cursor-pointer shadow-md"
+            title="Voltar para a página inicial mantendo a sessão ativa"
+            id="admin-dashboard-back-home"
+          >
+            <ArrowLeft className="h-4 w-4 shrink-0" />
+            <span>Voltar ao Portal</span>
+          </button>
+
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider bg-red-950/20 hover:bg-red-900/20 border border-red-500/30 hover:border-red-500/50 text-red-400 py-2.5 px-4 rounded-lg transition-colors cursor-pointer shadow-md"
+            title="Encerrar Sessão e revogar tokens de autenticação do Supabase"
+            id="admin-dashboard-logout-btn"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span>Encerrar Sessão</span>
+          </button>
+        </div>
       </div>
 
       {/* Floating Notifications */}
@@ -333,6 +395,19 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
         )}
 
         <button
+          onClick={() => { setActiveTab('feedbacks'); setIsEditingArticle(false); }}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'feedbacks'
+              ? 'bg-brand-purple text-black font-extrabold' 
+              : 'text-gray-400 hover:text-white hover:bg-purple-950/35'
+          }`}
+          id="admin-tab-feedbacks"
+        >
+          <MessageSquare className="h-4 w-4" />
+          <span>Feedbacks ({feedbacks.filter(f => f.status === 'pendente').length})</span>
+        </button>
+
+        <button
           onClick={() => { setActiveTab('supabase'); setIsEditingArticle(false); }}
           className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
             activeTab === 'supabase'
@@ -343,6 +418,25 @@ export default function AdminDashboard({ onNavigateHome, onArticleClick }: Admin
           <Database className="h-4 w-4" />
           <span>Supabase DB</span>
         </button>
+      </div>
+
+      {/* Session Security Indicator */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-purple-950/15 border border-purple-900/20 px-4 py-2.5 rounded-xl mb-6 text-xs text-gray-400 font-sans" id="admin-security-seal">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span>Sessão Administrativa Segura Ativa</span>
+        </div>
+        <div className="flex items-center gap-3 font-mono text-[10px] text-gray-500">
+          <span>ID de Usuário: <strong className="text-gray-400">{currentUser?.id || 'anonymous'}</strong></span>
+          <span className="hidden sm:inline">•</span>
+          <span className="flex items-center gap-1 text-emerald-400/80">
+            <Shield className="h-3.5 w-3.5" />
+            <span>Validação de Privilégios Ativa</span>
+          </span>
+        </div>
       </div>
 
       {/* METRICS VIEW (TAB) */}
@@ -1066,6 +1160,149 @@ CREATE TABLE newsletter_inscritos (
             </div>
 
           </div>
+
+        </div>
+      )}
+
+      {/* FEEDBACKS VIEW (TAB) */}
+      {activeTab === 'feedbacks' && !isEditingArticle && (
+        <div className="flex flex-col gap-6 animate-fade-in text-white font-sans" id="tab-feedbacks">
+          
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-900/15 pb-4">
+            <div>
+              <h2 className="font-display text-xl font-bold">Feedbacks & Sugestões Recebidos</h2>
+              <p className="text-xs text-gray-400">Acompanhe sugestões de novos recursos, elogios, relatos de bugs e críticas enviados pelos leitores do portal.</p>
+            </div>
+            
+            <button
+              onClick={refreshData}
+              className="flex items-center gap-1.5 text-xs bg-purple-900/20 hover:bg-purple-900/35 border border-purple-800/30 text-purple-300 py-1.5 px-3 rounded-lg cursor-pointer ml-auto"
+            >
+              <RefreshCw className="h-3.5 w-3.5 font-bold" />
+              <span>Atualizar</span>
+            </button>
+          </div>
+
+          {/* Quick counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-purple-950/15 border border-purple-900/20 rounded-xl p-4 flex flex-col">
+              <span className="text-[10px] uppercase font-bold text-gray-500 font-mono">Total de Feedbacks</span>
+              <span className="text-2xl font-black text-white mt-1">{feedbacks.length}</span>
+            </div>
+            <div className="bg-purple-950/15 border border-purple-900/20 rounded-xl p-4 flex flex-col">
+              <span className="text-[10px] uppercase font-bold text-amber-500/80 font-mono">Pendentes</span>
+              <span className="text-2xl font-black text-amber-400 mt-1">
+                {feedbacks.filter(f => f.status === 'pendente').length}
+              </span>
+            </div>
+            <div className="bg-purple-950/15 border border-purple-900/20 rounded-xl p-4 flex flex-col">
+              <span className="text-[10px] uppercase font-bold text-rose-500/80 font-mono">Elogios</span>
+              <span className="text-2xl font-black text-rose-400 mt-1">
+                {feedbacks.filter(f => f.type === 'elogio').length}
+              </span>
+            </div>
+            <div className="bg-purple-950/15 border border-purple-900/20 rounded-xl p-4 flex flex-col">
+              <span className="text-[10px] uppercase font-bold text-red-500/80 font-mono">Relatos de Bugs</span>
+              <span className="text-2xl font-black text-red-400 mt-1">
+                {feedbacks.filter(f => f.type === 'bug').length}
+              </span>
+            </div>
+          </div>
+
+          {/* Feedbacks List */}
+          {feedbacks.length === 0 ? (
+            <div className="text-center py-16 bg-purple-950/10 border border-purple-900/10 rounded-2xl">
+              <MessageSquare className="h-12 w-12 text-purple-500/30 mx-auto mb-3 animate-pulse" />
+              <h3 className="font-display text-base font-bold text-white mb-1">Nenhum feedback recebido</h3>
+              <p className="text-xs text-gray-400 max-w-sm mx-auto font-light leading-relaxed">
+                Nenhuma sugestão ou crítica foi cadastrada pelos leitores ainda. Os feedbacks enviados pelo atalho do rodapé ou cabeçalho aparecerão aqui automaticamente.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {feedbacks.map((item) => {
+                const badgeColor = 
+                  item.type === 'sugestao' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                  item.type === 'elogio' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                  item.type === 'critica' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                  item.type === 'bug' ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                  'bg-blue-500/10 text-blue-400 border-blue-500/20';
+
+                return (
+                  <div 
+                    key={item.id} 
+                    className={`border rounded-xl p-5 transition-all flex flex-col md:flex-row gap-4 items-start ${
+                      item.status === 'pendente' 
+                        ? 'bg-purple-950/20 border-brand-purple/30 shadow-md ring-1 ring-brand-purple/5' 
+                        : item.status === 'lido'
+                        ? 'bg-purple-950/10 border-purple-900/10 opacity-80'
+                        : 'bg-purple-950/5 border-purple-900/10 opacity-50'
+                    }`}
+                  >
+                    <div className="flex-1 flex flex-col gap-2.5 min-w-0 w-full">
+                      {/* Top metadata */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold text-white">{item.name}</span>
+                        <span className="text-[10px] text-purple-300 font-mono truncate max-w-[200px]">{item.email}</span>
+                        <span className="text-[10px] text-gray-500 font-mono">• {new Date(item.createdAt).toLocaleString('pt-BR')}</span>
+                        <span className={`text-[9px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded border ${badgeColor}`}>
+                          {item.type}
+                        </span>
+                        <span className={`text-[9px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${
+                          item.status === 'pendente' ? 'bg-amber-500/10 text-amber-400' :
+                          item.status === 'lido' ? 'bg-blue-500/10 text-blue-400' : 'bg-gray-500/10 text-gray-400'
+                        }`}>
+                          {item.status}
+                        </span>
+                      </div>
+
+                      {/* Message body */}
+                      <p className="text-xs text-gray-300 leading-relaxed font-sans bg-black/20 p-3.5 rounded-lg border border-purple-900/10 whitespace-pre-wrap">
+                        {item.message}
+                      </p>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap md:flex-col gap-2 shrink-0 self-stretch md:self-center justify-end">
+                      {item.status === 'pendente' ? (
+                        <button
+                          onClick={() => handleUpdateFeedbackStatus(item.id, 'lido')}
+                          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-brand-purple hover:bg-brand-purple/90 text-black py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
+                        >
+                          <CheckCircle className="h-3 w-3" />
+                          <span>Marcar Lido</span>
+                        </button>
+                      ) : item.status === 'lido' ? (
+                        <button
+                          onClick={() => handleUpdateFeedbackStatus(item.id, 'arquivado')}
+                          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-purple-900/30 hover:bg-purple-900/50 text-gray-300 border border-purple-800/40 py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
+                        >
+                          <span>Arquivar</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleUpdateFeedbackStatus(item.id, 'pendente')}
+                          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-purple-900/30 hover:bg-purple-900/50 text-gray-300 border border-purple-800/40 py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
+                        >
+                          <span>Reabrir</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDeleteFeedback(item.id)}
+                        className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 py-1.5 px-3 rounded-lg cursor-pointer transition-colors"
+                        title="Deletar feedback"
+                      >
+                        <Trash className="h-3 w-3" />
+                        <span>Excluir</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
         </div>
       )}
