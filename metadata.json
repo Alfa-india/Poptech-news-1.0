@@ -1,0 +1,6 @@
+{
+  "name": "PopTech News",
+  "description": "Portal completo de notícias sobre tecnologia, inteligência artificial, games e cultura pop em português do Brasil.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
